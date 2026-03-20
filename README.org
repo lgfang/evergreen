@@ -1,0 +1,171 @@
+#+TITLE: evergreen.el
+#+AUTHOR: Lungang Fang
+
+An Emacs package that provides a transient-based interface for the
+[[https://github.com/evergreen-ci/evergreen][MongoDB Evergreen CLI]], simplifying the patch submission workflow.
+
+* Features
+
+- Transient menus (magit-style) for =evergreen patch= and =evergreen patch-set-module=
+- Interactive comint-based buffer — full control over CLI prompts (y/n, module paths, etc.)
+- Automatic module detection from the current directory (e.g., =dsi-0=, =dsi-1=)
+- Automatic =~/.evergreen.yml= module path updates before patch submission
+- Alias completion fetched live from the Evergreen server
+- Patch ID completion from both the current session and recent patches
+- Configurable default values for project, description, alias, and flags
+
+* Requirements
+
+- Emacs 28.1+
+- [[https://github.com/magit/transient][transient]] 0.4.0+
+- [[https://github.com/evergreen-ci/evergreen][evergreen CLI]] installed and configured (=~/.evergreen.yml=)
+
+* Installation and Configuration
+
+#+begin_src emacs-lisp
+  (use-package evergreen
+    :vc (:url "https://github.com/lgfang/evergreen.el" :rev :newest)
+    :custom
+    ;; Default project name (string or function)
+    (evergreen-default-project "sys-perf")
+
+    ;; Default description (string or function).
+    ;; Defaults to the last commit message of the module directory.
+    ;; (evergreen-default-description "my patch")
+
+    ;; Default alias (nil, string, or function). nil means no default.
+    ;; (evergreen-default-alias "my-alias")
+
+    ;; Map project names to source repository directories.
+    ;; The evergreen patch command runs from these directories.
+    (evergreen-project-source-dirs '(("sys-perf" . "~/source/mongo")))
+
+    ;; Default flags for `evergreen patch'.
+    ;; Possible values: "--include-modules", "--finalize", "--browse", "--uncommitted"
+    (evergreen-patch-default-flags '("--include-modules"))
+
+    ;; Default flags for `evergreen patch-set-module'.
+    ;; Possible values: "--uncommitted"
+    (evergreen-patch-set-module-default-flags '("--uncommitted"))
+  )
+#+end_src
+
+* Usage
+
+** Opening the Evergreen buffer
+
+Run =M-x evergreen= from a module directory. This opens the =*evergreen*=
+buffer showing context information (directory, branch, detected module) and
+presents a transient menu for available commands.
+
+Use =C-u M-x evergreen= to be prompted for a directory instead of using the
+current one.
+
+The buffer uses =comint-mode=, so when a command is running you can interact
+with it directly — answer y/n prompts, enter module paths, etc.
+
+#+begin_example
+Evergreen
+=========
+Directory:  /Users/you/source/dsi-0/
+Branch:     my-feature-branch
+Module:     dsi
+────────────────────────────────────────
+#+end_example
+
+The transient menu:
+
+#+begin_example
+Evergreen
+ p Patch
+ m Patch set-module
+ u Get update
+#+end_example
+
+** Submitting a patch (=p=)
+
+Press =p= to open the patch transient menu:
+
+#+begin_example
+Evergreen Patch
+ -p project=sys-perf
+ -d description=<last commit message>
+ -a alias
+ -r reuse-compile-from
+ -i include-modules
+ -f finalize
+ -b browse
+ -u uncommitted
+
+ p  Submit patch
+#+end_example
+
+- =-p= :: Set the target project (default: =evergreen-default-project=).
+- =-d= :: Set the patch description (default: =evergreen-default-description=,
+  which defaults to the last commit message of the module directory).
+- =-a= :: Select a patch alias (default: =evergreen-default-alias=).
+  Completion candidates are fetched from the Evergreen server for the
+  selected project.
+- =-r= :: Reuse compiled artifacts from a version ID. Passed as
+  =--param reuse_compile_from=<id>=.
+- =-i= :: Include modules. When enabled and a module is detected, the
+  package automatically updates =~/.evergreen.yml= with the current module
+  directory before submitting.
+- =-f= :: Finalize the patch (schedule tasks immediately).
+- =-b= :: Open the patch URL in a browser after submission.
+- =-u= :: Include uncommitted changes.
+
+Which flags are enabled by default is controlled by
+=evergreen-patch-default-flags=.
+
+Press =p= again to submit the patch.
+
+** Setting a module on an existing patch (=m=)
+
+Press =m= to open the patch-set-module transient menu:
+
+#+begin_example
+Evergreen Patch Set Module
+ -i patch-id
+ -m module=dsi
+ -u uncommitted
+
+ m  Submit patch-set-module
+#+end_example
+
+- =-i= :: Select a patch ID. Completion candidates include patches from the
+  current session buffer and the 30 most recent non-hidden, non-PR patches
+  fetched from Evergreen. Candidates are displayed as =<id>  <description>=
+  for easy identification. Free-form input is also accepted.
+- =-m= :: Module name. Auto-detected from the current directory.
+- =-u= :: Include uncommitted changes.
+
+Which flags are enabled by default is controlled by
+=evergreen-patch-set-module-default-flags=.
+
+Press =m= again to submit.
+
+** Updating the Evergreen CLI (=u=)
+
+Press =u= to download and install the latest Evergreen CLI binary. This
+runs =sudo evergreen get-update --install= in the =*evergreen*= buffer.
+
+** Module detection
+
+The package detects the =dsi= module when the current directory matches
+=/dsi/= or =/dsi-<N>/=. When =--include-modules= is enabled during patch
+submission, the package updates the =module_paths= entry in
+=~/.evergreen.yml= to point to the current directory, so you can work from
+any clone (=dsi-0=, =dsi-1=, =dsi-2=, etc.) without manual config edits.
+
+* Customization summary
+
+| Variable                                  | Description                                    | Default                          |
+|-------------------------------------------+------------------------------------------------+----------------------------------|
+| =evergreen-default-project=               | Default project name (string or function)      | ="sys-perf"=                     |
+| =evergreen-default-description=           | Default patch description (string or function) | last commit message              |
+| =evergreen-default-alias=                 | Default patch alias (nil, string, or function) | =nil=                            |
+| =evergreen-config-file=                   | Path to Evergreen config file                  | ="~/.evergreen.yml"=             |
+| =evergreen-project-source-dirs=           | Project-to-directory mapping                   | =(("sys-perf" . "~/source/mongo"))= |
+| =evergreen-patch-default-flags=           | Default flags for =evergreen patch=            | =()=                             |
+| =evergreen-patch-set-module-default-flags= | Default flags for =patch-set-module=           | =("--uncommitted")=             |
